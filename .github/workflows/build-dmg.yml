@@ -8,13 +8,26 @@ permissions:
 jobs:
   build:
     runs-on: macos-15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - name: Build unsigned Apple Silicon DMG
+      - name: Print macOS and Swift versions
+        run: |
+          sw_vers
+          xcodebuild -version
+          swift --version
+      - name: Compile and package unsigned Apple Silicon app
         run: bash scripts/build-macos.sh
-      - name: Upload DMG
+      - name: Validate application and DMG
+        run: |
+          test -x build/WeChatGroupManager.app/Contents/MacOS/WeChatGroupManager
+          codesign --verify --deep --strict build/WeChatGroupManager.app
+          hdiutil verify build/WeChatGroupManager-v1.2.dmg
+          shasum -a 256 build/WeChatGroupManager-v1.2.dmg
+      - name: Upload DMG artifact
         uses: actions/upload-artifact@v4
         with:
-          name: WeChatGroupManager-v1.2-macos-arm64-unsigned
+          name: WeChatGroupManager-v1.2-macos-arm64-adhoc
           path: build/WeChatGroupManager-v1.2.dmg
+          retention-days: 30
           if-no-files-found: error
