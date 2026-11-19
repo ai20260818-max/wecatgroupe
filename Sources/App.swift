@@ -31,7 +31,7 @@ final class GroupModel: ObservableObject {
     @Published var permission = false
 
     func requestPermission() {
-        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: kCFBooleanTrue!] as CFDictionary
         permission = AXIsProcessTrustedWithOptions(options)
         message = permission ? "已取得辅助功能授权" : "请在系统设置中授权辅助功能"
     }
