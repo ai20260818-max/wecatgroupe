@@ -26,6 +26,8 @@ struct GroupRecord: Identifiable {
 final class GroupModel: ObservableObject {
     @Published var groups: [GroupRecord] = []
     @Published var visibleCandidates: [String] = []
+    @Published var searchMarker = ""
+    @Published var scanDetails = ""
     @Published var message = "开发验证版：不会执行真实退群。"
     @Published var mode = 0
     @Published var inputName = ""
@@ -85,7 +87,27 @@ final class GroupModel: ObservableObject {
         }
         for window in windows { walk(window, 0) }
         visibleCandidates = labels.sorted()
+        let marker = searchMarker.trimmingCharacters(in: .whitespacesAndNewlines)
+        let matches = marker.isEmpty ? 0 : visibleCandidates.filter { $0.localizedCaseInsensitiveContains(marker) }.count
+        scanDetails = "可见窗口：\(windows.count)；AX元素：\(visited)；候选文本：\(visibleCandidates.count)；含搜索标记文本：\(matches)。仅扫描当前已加载的界面内容，不代表全量群聊。"
         message = "只读检查完成：访问了 \(visited) 个元素，发现 \(visibleCandidates.count) 条不同文本。尚未验证哪些是群聊，不会自动加入群聊清单。"
+    }
+
+    func exportDiagnostics() {
+        guard !scanDetails.isEmpty else {
+            message = "请先在微信中搜索你的群聊标记，然后点击读取可见候选文本"
+            return
+        }
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "微信辅助功能诊断.txt"
+        panel.allowedContentTypes = [.plainText]
+        if panel.runModal() == .OK, let url = panel.url {
+            do {
+                let summary = "微信群聊管理器 V1.5 只读诊断\\n" + scanDetails + "\\n候选文本未包含在报告中，以保护聊天内容隐私。\\n"
+                try summary.write(to: url, atomically: true, encoding: .utf8)
+                message = "诊断摘要已导出（不含聊天文本）"
+            } catch { message = "诊断导出失败：\\(error.localizedDescription)" }
+        }
     }
 
     func addManual() {
@@ -130,7 +152,7 @@ struct ContentView: View {
             HStack {
                 Text("微信群聊管理器").font(.title2.bold())
                 Spacer()
-                Text("V1.4 · 开发验证版").foregroundStyle(.secondary)
+                Text("V1.5 · 开发验证版").foregroundStyle(.secondary)
             }
             Picker("模式", selection: $model.mode) {
                 Text("全部群聊").tag(0)
@@ -140,10 +162,13 @@ struct ContentView: View {
                 Text("好友共同群识别尚未实现：本页面不会推断或自动选择共同群。")
                     .foregroundStyle(.orange)
             }
+            TextField("微信搜索标记（仅用于统计匹配数量，不自动操作微信）", text: $model.searchMarker)
+            Text("先在微信中手动搜索自己的昵称或独特标记，并保持结果页面打开，再执行只读检查。").font(.caption).foregroundStyle(.secondary)
             HStack {
                 Button("申请辅助功能权限") { model.requestPermission() }
                 Button("只读检查微信窗口") { model.inspectWeChat() }
                 Button("读取可见候选文本") { model.scanVisibleSearchResults() }
+                Button("导出诊断摘要") { model.exportDiagnostics() }
                 Spacer()
                 Button("导出 CSV") { model.exportCSV() }
             }
@@ -151,6 +176,7 @@ struct ContentView: View {
                 TextField("手动输入待核验群名称", text: $model.inputName)
                 Button("添加记录") { model.addManual() }
             }
+            if !model.scanDetails.isEmpty { Text(model.scanDetails).font(.caption).foregroundStyle(.secondary) }
             if !model.visibleCandidates.isEmpty {
                 DisclosureGroup("微信窗口候选文本（\(model.visibleCandidates.count) 条，未经群聊识别）") {
                     ScrollView {
