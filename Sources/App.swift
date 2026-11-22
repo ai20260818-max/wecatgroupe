@@ -25,6 +25,7 @@ struct GroupRecord: Identifiable {
 @MainActor
 final class GroupModel: ObservableObject {
     @Published var groups: [GroupRecord] = []
+    @Published var visibleCandidates: [String] = []
     @Published var message = "开发验证版：不会执行真实退群。"
     @Published var mode = 0
     @Published var inputName = ""
@@ -83,12 +84,8 @@ final class GroupModel: ObservableObject {
             }
         }
         for window in windows { walk(window, 0) }
-        let existing = Set(groups.map(\.name))
-        let candidates = labels.subtracting(existing).sorted()
-        for label in candidates {
-            groups.append(GroupRecord(name: label, source: "辅助功能候选文本（非已确认群聊）"))
-        }
-        message = "读取了 \(visited) 个辅助功能元素，新增 \(candidates.count) 条候选文本。可能包含按钮、联系人、消息等，绝不能视为已核验群聊。"
+        visibleCandidates = labels.sorted()
+        message = "只读检查完成：访问了 \(visited) 个元素，发现 \(visibleCandidates.count) 条不同文本。尚未验证哪些是群聊，不会自动加入群聊清单。"
     }
 
     func addManual() {
@@ -133,7 +130,7 @@ struct ContentView: View {
             HStack {
                 Text("微信群聊管理器").font(.title2.bold())
                 Spacer()
-                Text("V1.3 · 开发验证版").foregroundStyle(.secondary)
+                Text("V1.4 · 开发验证版").foregroundStyle(.secondary)
             }
             Picker("模式", selection: $model.mode) {
                 Text("全部群聊").tag(0)
@@ -153,6 +150,17 @@ struct ContentView: View {
             HStack {
                 TextField("手动输入待核验群名称", text: $model.inputName)
                 Button("添加记录") { model.addManual() }
+            }
+            if !model.visibleCandidates.isEmpty {
+                DisclosureGroup("微信窗口候选文本（\(model.visibleCandidates.count) 条，未经群聊识别）") {
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 5) {
+                            ForEach(model.visibleCandidates, id: \.self) { candidate in
+                                Text(candidate).font(.caption).textSelection(.enabled)
+                            }
+                        }
+                    }.frame(maxHeight: 160)
+                }
             }
             TextField("搜索已记录群聊", text: $search)
             Text("记录 \(model.groups.count) 条 · 手动核验不代表微信身份验证")
