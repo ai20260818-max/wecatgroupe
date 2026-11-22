@@ -16,18 +16,22 @@ jobs:
           sw_vers
           xcodebuild -version
           swift --version
+      - name: Swift source typecheck
+        run: |
+          SDK="$(xcrun --sdk macosx --show-sdk-path)"
+          xcrun swiftc -parse-as-library -typecheck -sdk "$SDK" -target arm64-apple-macos13.0 Sources/App.swift
       - name: Compile and package unsigned Apple Silicon app
         run: bash scripts/build-macos.sh
       - name: Validate application and DMG
         run: |
           test -x build/WeChatGroupManager.app/Contents/MacOS/WeChatGroupManager
           codesign --verify --deep --strict build/WeChatGroupManager.app
-          hdiutil verify build/WeChatGroupManager-v1.2.dmg
-          shasum -a 256 build/WeChatGroupManager-v1.2.dmg
+          hdiutil verify build/WeChatGroupManager-v1.5.dmg
+          shasum -a 256 build/WeChatGroupManager-v1.5.dmg
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v4
         with:
-          name: WeChatGroupManager-v1.2-macos-arm64-adhoc
-          path: build/WeChatGroupManager-v1.2.dmg
+          name: WeChatGroupManager-v1.5-macos-arm64-adhoc
+          path: build/WeChatGroupManager-v1.5.dmg
           retention-days: 30
           if-no-files-found: error
