@@ -26,12 +26,12 @@ jobs:
         run: |
           test -x build/WeChatGroupManager.app/Contents/MacOS/WeChatGroupManager
           codesign --verify --deep --strict build/WeChatGroupManager.app
-          hdiutil verify build/WeChatGroupManager-v1.5.dmg
-          shasum -a 256 build/WeChatGroupManager-v1.5.dmg
+          hdiutil verify build/WeChatGroupManager-v1.6.dmg
+          shasum -a 256 build/WeChatGroupManager-v1.6.dmg
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v4
         with:
-          name: WeChatGroupManager-v1.5-macos-arm64-adhoc
-          path: build/WeChatGroupManager-v1.5.dmg
+          name: WeChatGroupManager-v1.6-macos-arm64-adhoc
+          path: build/WeChatGroupManager-v1.6.dmg
           retention-days: 30
           if-no-files-found: error
