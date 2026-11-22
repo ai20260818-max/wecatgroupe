@@ -2,6 +2,8 @@ import SwiftUI
 import AppKit
 import ApplicationServices
 import UniformTypeIdentifiers
+import Vision
+import CoreGraphics
 
 @main
 struct GroupManagerApp: App {
@@ -28,6 +30,8 @@ final class GroupModel: ObservableObject {
     @Published var visibleCandidates: [String] = []
     @Published var searchMarker = ""
     @Published var scanDetails = ""
+    @Published var ocrLines: [String] = []
+    @Published var ocrSelected: Set<Int> = []
     @Published var message = "开发验证版：不会执行真实退群。"
     @Published var mode = 0
     @Published var inputName = ""
@@ -110,6 +114,50 @@ final class GroupModel: ObservableObject {
         }
     }
 
+
+    func recognizeVisibleWeChatWindow() {
+        guard let app = NSWorkspace.shared.runningApplications.first(where: {
+            $0.bundleIdentifier == "com.tencent.xinWeChat" ||
+            $0.localizedName == "微信" || $0.localizedName == "WeChat"
+        }) else { message = "请先启动微信"; return }
+        guard let info = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]],
+              let entry = info.first(where: {
+                  ($0[kCGWindowOwnerPID as String] as? Int) == Int(app.processIdentifier) &&
+                  ($0[kCGWindowLayer as String] as? Int) == 0
+              }),
+              let number = entry[kCGWindowNumber as String] as? Int else {
+            message = "无法找到微信主窗口，请将微信置于屏幕前方"; return
+        }
+        guard let image = CGWindowListCreateImage(.null, .optionIncludingWindow, CGWindowID(number), [.boundsIgnoreFraming]) else {
+            message = "窗口截图失败。请在系统设置→隐私与安全性→屏幕录制中授权本软件，然后重新启动。"; return
+        }
+        let request = VNRecognizeTextRequest()
+        request.recognitionLevel = .accurate
+        request.recognitionLanguages = ["zh-Hans", "en-US"]
+        request.usesLanguageCorrection = false
+        do {
+            try VNImageRequestHandler(cgImage: image).perform([request])
+            let observations = (request.results ?? []).sorted {
+                $0.boundingBox.midY > $1.boundingBox.midY
+            }
+            ocrLines = observations.compactMap { $0.topCandidates(1).first?.string }
+                .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            ocrSelected = []
+            message = "识别到 \(ocrLines.count) 行可见文字。OCR 包含消息、按钮和联系人；请逐行人工筛选，不能认定为全部群聊。"
+        } catch {
+            message = "OCR 识别失败：\(error.localizedDescription)"
+        }
+    }
+
+    func importSelectedOCRLines() {
+        let chosen = ocrSelected.sorted().filter { $0 >= 0 && $0 < ocrLines.count }
+        for index in chosen {
+            groups.append(GroupRecord(name: ocrLines[index], source: "OCR 人工筛选（身份待核验）"))
+        }
+        ocrSelected = []
+        message = "新增 \(chosen.count) 条待核验记录。保留重复名称，避免把不同群错误合并。"
+    }
+
     func addManual() {
         let name = inputName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return }
@@ -152,7 +200,7 @@ struct ContentView: View {
             HStack {
                 Text("微信群聊管理器").font(.title2.bold())
                 Spacer()
-                Text("V1.5 · 开发验证版").foregroundStyle(.secondary)
+                Text("V1.6 · OCR 验证版").foregroundStyle(.secondary)
             }
             Picker("模式", selection: $model.mode) {
                 Text("全部群聊").tag(0)
@@ -168,6 +216,7 @@ struct ContentView: View {
                 Button("申请辅助功能权限") { model.requestPermission() }
                 Button("只读检查微信窗口") { model.inspectWeChat() }
                 Button("读取可见候选文本") { model.scanVisibleSearchResults() }
+                Button("识别微信窗口截图 OCR") { model.recognizeVisibleWeChatWindow() }
                 Button("导出诊断摘要") { model.exportDiagnostics() }
                 Spacer()
                 Button("导出 CSV") { model.exportCSV() }
@@ -186,6 +235,24 @@ struct ContentView: View {
                             }
                         }
                     }.frame(maxHeight: 160)
+                }
+            }
+            if !model.ocrLines.isEmpty {
+                DisclosureGroup("OCR 可见文字（逐行选择，非自动识别群聊）") {
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 6) {
+                            ForEach(model.ocrLines.indices, id: \.self) { index in
+                                Toggle(model.ocrLines[index], isOn: Binding(
+                                    get: { model.ocrSelected.contains(index) },
+                                    set: { selected in
+                                        if selected { model.ocrSelected.insert(index) }
+                                        else { model.ocrSelected.remove(index) }
+                                    }
+                                )).toggleStyle(.checkbox)
+                            }
+                        }
+                    }.frame(maxHeight: 180)
+                    Button("将选中的文字加入待核验清单") { model.importSelectedOCRLines() }
                 }
             }
             TextField("搜索已记录群聊", text: $search)
