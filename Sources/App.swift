@@ -51,6 +51,46 @@ final class GroupModel: ObservableObject {
         message = "只读检测：发现 \(windows.count) 个微信窗口。尚未实现全量群聊或共同群发现。"
     }
 
+    func scanVisibleSearchResults() {
+        guard AXIsProcessTrusted() else { requestPermission(); return }
+        guard let app = NSWorkspace.shared.runningApplications.first(where: {
+            $0.bundleIdentifier == "com.tencent.xinWeChat" ||
+            $0.localizedName == "微信" || $0.localizedName == "WeChat"
+        }) else { message = "未找到运行中的微信"; return }
+        let root = AXUIElementCreateApplication(app.processIdentifier)
+        var windowsValue: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(root, kAXWindowsAttribute as CFString, &windowsValue) == .success,
+              let windows = windowsValue as? [AXUIElement] else {
+            message = "无法读取微信窗口"; return
+        }
+        var labels = Set<String>()
+        var visited = 0
+        func walk(_ element: AXUIElement, _ depth: Int) {
+            guard depth < 14, visited < 12000 else { return }
+            visited += 1
+            for key in [kAXTitleAttribute, kAXValueAttribute, kAXDescriptionAttribute] {
+                var value: CFTypeRef?
+                if AXUIElementCopyAttributeValue(element, key as CFString, &value) == .success,
+                   let text = value as? String {
+                    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !trimmed.isEmpty && trimmed.count < 160 { labels.insert(trimmed) }
+                }
+            }
+            var childrenValue: CFTypeRef?
+            if AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &childrenValue) == .success,
+               let children = childrenValue as? [AXUIElement] {
+                for child in children { walk(child, depth + 1) }
+            }
+        }
+        for window in windows { walk(window, 0) }
+        let existing = Set(groups.map(\.name))
+        let candidates = labels.subtracting(existing).sorted()
+        for label in candidates {
+            groups.append(GroupRecord(name: label, source: "辅助功能候选文本（非已确认群聊）"))
+        }
+        message = "读取了 \(visited) 个辅助功能元素，新增 \(candidates.count) 条候选文本。可能包含按钮、联系人、消息等，绝不能视为已核验群聊。"
+    }
+
     func addManual() {
         let name = inputName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return }
@@ -93,7 +133,7 @@ struct ContentView: View {
             HStack {
                 Text("微信群聊管理器").font(.title2.bold())
                 Spacer()
-                Text("V1.2 · 开发验证版").foregroundStyle(.secondary)
+                Text("V1.3 · 开发验证版").foregroundStyle(.secondary)
             }
             Picker("模式", selection: $model.mode) {
                 Text("全部群聊").tag(0)
@@ -106,6 +146,7 @@ struct ContentView: View {
             HStack {
                 Button("申请辅助功能权限") { model.requestPermission() }
                 Button("只读检查微信窗口") { model.inspectWeChat() }
+                Button("读取可见候选文本") { model.scanVisibleSearchResults() }
                 Spacer()
                 Button("导出 CSV") { model.exportCSV() }
             }
