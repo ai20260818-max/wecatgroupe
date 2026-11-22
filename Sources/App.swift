@@ -103,10 +103,10 @@ final class GroupModel: ObservableObject {
         panel.allowedContentTypes = [.plainText]
         if panel.runModal() == .OK, let url = panel.url {
             do {
-                let summary = "微信群聊管理器 V1.5 只读诊断\\n" + scanDetails + "\\n候选文本未包含在报告中，以保护聊天内容隐私。\\n"
+                let summary = "微信群聊管理器 V1.5 只读诊断\n" + scanDetails + "\n候选文本未包含在报告中，以保护聊天内容隐私。\n"
                 try summary.write(to: url, atomically: true, encoding: .utf8)
                 message = "诊断摘要已导出（不含聊天文本）"
-            } catch { message = "诊断导出失败：\\(error.localizedDescription)" }
+            } catch { message = "诊断导出失败：\(error.localizedDescription)" }
         }
     }
 
